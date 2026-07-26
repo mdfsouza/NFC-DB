@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registro de Incentivo - Evento</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f6f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+    .card { background: #ffffff; width: 100%; max-width: 400px; padding: 30px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); text-align: center; }
+    .badge { display: inline-block; background: #eef2ff; color: #4f46e5; padding: 6px 16px; border-radius: 20px; font-weight: 600; font-size: 14px; margin-bottom: 20px; }
+    h1 { font-size: 24px; color: #1f2937; margin-bottom: 8px; }
+    p { color: #6b7280; font-size: 14px; margin-bottom: 24px; }
+    button { width: 100%; background: #4f46e5; color: white; border: none; padding: 16px; font-size: 16px; font-weight: 600; border-radius: 12px; cursor: pointer; transition: background 0.2s; }
+    button:active { background: #3730a3; }
+    .status-box { margin-top: 24px; padding: 16px; border-radius: 12px; font-weight: 600; font-size: 15px; background: #f9fafb; color: #4b5563; border: 1px solid #e5e7eb; }
+    .success { background: #def7ec; color: #03543f; border-color: #84e1bc; }
+    .error { background: #fde8e8; color: #9b1c1c; border-color: #f8b4b4; }
+    .scanning { background: #feecdc; color: #b43403; border-color: #fbd5d5; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <div class="badge" id="dispositivo-tag">Dispositivo: DISP-01</div>
+    <h1 id="estande-titulo">Estande Microsoft</h1>
+    <p>Aproxime o crachá NFC do participante do celular para registrar o incentivo.</p>
+
+    <button id="btn-iniciar" onclick="iniciarLeituraNFC()">Ativar Leitor NFC</button>
+
+    <div id="status" class="status-box">Aguardando ativação...</div>
+  </div>
+
+  <script>
+    // ⚙️ CONFIGURAÇÕES DO ESTANDE (Ajuste para cada celular)
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzWF9G_WkD1xoGoJfrsNhNJlCdiMA1r-03F7nthIMFC-W3iFfBBJUm4JPw53cIJBIB0-w/exec";
+    const ESTANDE_NOME = "DAMJU";
+    const DISPOSITIVO_ID = "DISP-01";
+
+    // Atualiza os nomes na interface
+    document.getElementById("estande-titulo").innerText = "Estande " + ESTANDE_NOME;
+    document.getElementById("dispositivo-tag").innerText = "Dispositivo: " + DISPOSITIVO_ID;
+
+    let leitorAtivo = false;
+
+    async function iniciarLeituraNFC() {
+      const statusDiv = document.getElementById("status");
+      const btn = document.getElementById("btn-iniciar");
+
+      if (!('NDEFReader' in window)) {
+        statusDiv.className = "status-box error";
+        statusDiv.innerText = "⚠️ NFC não suportado neste navegador. Abra via Google Chrome no Android.";
+        return;
+      }
+
+      try {
+        const ndef = new NDEFReader();
+        await ndef.scan();
+        
+        leitorAtivo = true;
+        btn.style.display = "none"; // Esconde o botão após ativar
+        statusDiv.className = "status-box scanning";
+        statusDiv.innerText = "🟢 Leitor Ativo! Encoste a tag NFC...";
+
+        // Escuta a leitura das tags em tempo real
+        ndef.addEventListener("reading", async ({ serialNumber }) => {
+          // Efeito sonoro simples (opcional)
+          tocarBipe();
+
+          statusDiv.className = "status-box scanning";
+          statusDiv.innerText = "⏳ Enviando dados para a planilha...";
+
+          try {
+            // Envia o POST para o Google Apps Script
+            await fetch(APPS_SCRIPT_URL, {
+              method: "POST",
+              mode: "no-cors", // Evita bloqueios de CORS do Google
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                dispositivo_id: DISPOSITIVO_ID,
+                estande: ESTANDE_NOME,
+                tag_nfc_id: serialNumber || "TAG_SEM_ID"
+              })
+            });
+
+            statusDiv.className = "status-box success";
+            statusDiv.innerText = "✅ Incentivo Registrado!";
+
+            // Volta ao estado de espera após 1.5 segundos
+            setTimeout(() => {
+              statusDiv.className = "status-box scanning";
+              statusDiv.innerText = "🟢 Leitor Ativo! Encoste a próxima tag...";
+            }, 1500);
+
+          } catch (err) {
+            statusDiv.className = "status-box error";
+            statusDiv.innerText = "❌ Erro ao salvar dados. Tente novamente.";
+          }
+        });
+
+      } catch (error) {
+        statusDiv.className = "status-box error";
+        statusDiv.innerText = "Erro ao ativar NFC: " + error.message;
+      }
+    }
+
+    function tocarBipe() {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(800, ctx.currentTime);
+      osc.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    }
+  </script>
+</body>
+</html>
